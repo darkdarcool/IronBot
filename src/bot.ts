@@ -1,11 +1,11 @@
 import { Client, Message, GatewayIntentBits, Guild, ChatInputCommandInteraction, UserContextMenuCommandInteraction, CacheType, MessageContextMenuCommandInteraction, ButtonInteraction } from "discord.js";
 import commands from "./commands/index.js";
-import setLog from "./commands/setLog/index.js";
 import Cooldowns from "./Cooldowns.js";
-import { set, exists, update } from "./database/firebase.js";
 import { createUser, createServer } from "./database/schema/index.js";
 import Moderation from "./Moderation.js";
+import { getDB } from "./database/mongo.js";
 
+let db = await getDB("dev");
 export type Interaction = ChatInputCommandInteraction<CacheType> | MessageContextMenuCommandInteraction<CacheType> | UserContextMenuCommandInteraction;
 
 const logChannel = "logChannel";
@@ -46,30 +46,21 @@ export default class Bot {
   }
 
   private async onMessage(message: Message) {
+    
+    let serverExists = await db.collection("servers").findOne({ id: message.guild?.id });
     let guild = message.guild as Guild;
-    if (await (!exists("servers", guild.id))) {
+    if (!serverExists) {
       let channelId = guild.channels.cache.find(channel => channel.name === "logs");
-      set("servers", guild.id, createServer(guild, channelId?.id as string | undefined));
+      let server = createServer(message.guild as Guild, channelId?.id as string | undefined);
+      await db.collection("servers").insertOne(server);
     }
     if (message.author.bot || !message.guild) return;
-    if (message.content.startsWith(this.prefix) && await (!exists("users", message.author.id))) {
-      await set("users", message.author.id, createUser(message.author));
+    let userExists = await db.collection("users").findOne({ id: message.author.id });
+    if (!userExists) {
+      let user = createUser(message.author);
+      await db.collection("users").insertOne(user);
     }
-    if (message.content.startsWith(this.prefix)) {
-      let msg = message.content.replace(this.prefix, "");
-      const args = msg.split(" ");
-      const command = args[0];
-      switch (command) {
-        case "setLog":
-          // const channelId = await setLog(args[1], message.guild, message);
-          // console.log(channelId);
-          // let server = createServer(message.guild as Guild, channelId);
-          // await set("servers", guild.id as string, server);
-          break;
-        default:
-          break;
-      }
-    }
+    
     else await this.moderation.onMessage(message);
   }
   
@@ -84,7 +75,7 @@ export default class Bot {
       let commandName = buttonInteraction.customId;
       if (commandName.includes(":")) commandName = commandName.split(":")[0];
       let commandObj = commands.find(command => command.name === commandName) as any;
-      let command = await commandObj.command.onButton(buttonInteraction, this.cooldown);
+      await commandObj.command.onButton(buttonInteraction, this.cooldown);
     }
   }
 }

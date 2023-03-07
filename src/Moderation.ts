@@ -1,14 +1,19 @@
-import * as Discord from 'discord.js';
+import * as Discord from "discord.js";
 import Rules from "./moderation/rules/index.js"
 import Rule from './moderation/rules/Rule.js';
-import { exists, set, get } from './database/firebase.js';
-import { createUser, Server, User } from './database/schema/index.js';
+// import { exists, set, get } from './database/firebase.js';
+import { getDB } from "./database/mongo.js"
+import {  createUser, Server, User } from './database/schema/index.js';
 
-async function createUserIfNotExists(userId: string, bot: Discord.Client) {
-  if (!exists("users", userId)) {
-    let user = await bot.users.fetch(userId);
-    await set("users", userId, createUser(user));
+let db = await getDB("dev");
+
+async function createUserIfNotExists(user: Discord.User) {
+  let userExists = db.collection("users").findOne({ id: user.id });
+  if (!userExists) {
+    let userData = createUser(user);
+    await db.collection("users").insertOne(userData);
   }
+  
 }
 
 export default class Moderation {
@@ -24,12 +29,13 @@ export default class Moderation {
     let logChannelId = await this.getLogChannel(message.guildId as string);
     if (logChannelId) {
       let logChannel = this.bot.channels.cache.get(await logChannelId) as Discord.TextChannel;
-      await createUserIfNotExists(message.author.id, this.bot);
-      let user = await get<User>("users", message.author.id);
+      await createUserIfNotExists(message.author);
+      let user = await db.collection("users").findOne({ id: message.author.id }) as unknown as User;
       violated.forEach(async (rule) => {
         user.violations += rule.level;
       });
-      await set("users", message.author.id, user);
+      // await set("users", message.author.id, user);
+      await db.collection("users").updateOne({ id: message.author.id }, { $set: user });
       let logEmbed = new Discord.EmbedBuilder()
         .setColor("#ff0000")
         .setTitle("Violation")
@@ -63,7 +69,7 @@ export default class Moderation {
   }
 
   public async getLogChannel(serverId: string): Promise<string> {
-    let server = await get<Server>("servers", serverId);
+    let server = await db.collection("servers").findOne({ id: serverId }) as unknown as Server;
     return server.logChannel as string;
   }
 }

@@ -1,8 +1,11 @@
 import { EmbedBuilder } from "discord.js";
 import { Interaction } from "../../bot.js";
 import Command from "../Command.js";
-import { get, set } from "../../database/firebase.js"
+// import { get, set } from "../../database/firebase.js"
 import { Server } from "../../database/schema/index.js";
+import { getDB } from "../../database/mongo.js";
+
+let db = await getDB("dev");
 
 export default class SetLog extends Command { 
   constructor() {
@@ -18,9 +21,11 @@ export default class SetLog extends Command {
         .setColor(0x00ff00)
         .setTimestamp(new Date())
         .setFooter({ text: "Log Channel" })
-      let serverInfo = await get<Server>("servers", interaction.guildId as string);
+      // let serverInfo = await get<Server>("servers", interaction.guildId as string);
+      let serverInfo = await db.collection("servers").findOne({ id: interaction.guildId as string }) as unknown as Server;
       serverInfo.logChannel = channelId as string;
-      await set("servers", interaction.guildId as string, serverInfo);
+      // await set("servers", interaction.guildId as string, serverInfo);
+      await db.collection("servers").updateOne({ id: interaction.guildId as string }, { $set: serverInfo });
       await interaction.editReply({ embeds: [embed] });
       return;
     }

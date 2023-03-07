@@ -1,9 +1,11 @@
 import { Message, Guild, EmbedBuilder, Channel, Client, ButtonBuilder, ActionRowBuilder, ButtonStyle, ButtonInteraction } from "discord.js";
 import { Interaction } from "../../bot.js";
 import Command from "../Command.js";
-import { get, set } from "../../database/firebase.js"
 import { User } from "../../database/schema/index.js";
 import Cooldowns from "../../Cooldowns.js";
+import { getDB } from "../../database/mongo.js";
+
+let db = await getDB("dev");
 
 type Games = {
   [user: string]: {
@@ -74,10 +76,11 @@ export default class EmojiGameCommand extends Command {
         .setTitle("EmojiGame - Correct Answer!")
         .setDescription("You got the correct answer!\nYou have been awarded " + reward + " coins!")
         .setTimestamp(new Date());
-      await interaction.reply({ ephemeral: true, embeds: [embed] });
-      let userData = await get<User>("users", gameOwner);
+      await interaction.update({ content: "Congrats!", embeds: [embed], components: [] });
+      // let userData = await get<User>("users", gameOwner);
+      let userData = await db.collection("users").findOne({ id: gameOwner }) as unknown as User;
       userData.money += reward;
-      await set("users", gameOwner, userData);
+     await db.collection("users").updateOne({ id: gameOwner }, { $set: userData });
     }
     else {
       let embed = new EmbedBuilder()
@@ -85,7 +88,7 @@ export default class EmojiGameCommand extends Command {
         .setDescription(`You got the wrong answer.
         The correct answer was ${game.answer}, you answered ${userAnwer}`)
         .setTimestamp(new Date());
-      await interaction.reply({ ephemeral: true, embeds: [embed] });
+      await interaction.update({ content: "Oh no!", embeds: [embed], components: [] });
     }
 
     // cleanup
